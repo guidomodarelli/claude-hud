@@ -10,6 +10,7 @@ All notable changes to Claude HUD will be documented in this file.
 - `display.projectLayout` and `gitStatus.layout`: `"line"` moves the project directory and the git block to their own lines at the end of the HUD; `"inline"` keeps the old first line. `"line"` by default (#1).
 
 ### Changed
+- `display.showCost` is on by default: the first line shows the session cost Claude Code reports, `Cost $1.23`, after the context. Bedrock and Vertex sessions still hide it unless `display.showRoutedCost` is on. Set `display.showCost` to `false` to hide it.
 - The default HUD is now: the model with its reasoning effort, context and usage on one line (`display.showEffortLevel` and the short `display.usageCompact` on, `display.mergeGroups` now `[["project","addedDirs","context","usage"]]`): `[Opus ◑ high] █████░░░░░ 45% │ 5h: ███░░░░░░░ 25% (1h 30m)`; the CLAUDE.md, MCP and hook counts with the session duration under it (`display.showConfigCounts` and `display.showDuration` on); then the directory's name and the git line with the PR (#1).
 - New `display.contextBesideModel`: the expanded layout shows the context bar and percent right after the model badge, without the `Context` label, as compact does. On by default (#1).
 - New `display.usageCompactBar`: with `display.usageCompact`, each window gets a progress bar before its percent. On by default (#1).
