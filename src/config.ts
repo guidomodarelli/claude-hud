@@ -272,7 +272,7 @@ export const DEFAULT_CONFIG: HudConfig = {
     contextBesideModel: true,
     contextValue: 'percent',
     showConfigCounts: true,
-    showCost: false,
+    showCost: true,
     showRoutedCost: false,
     showDailyCost: false,
     showWeeklyCost: false,

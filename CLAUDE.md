@@ -41,7 +41,7 @@ Claude Code runs the command after each message, `/compact`, a mode change, a ra
 
 ## Invariants
 
-- The default HUD is four lines: model with effort, context and usage; config counts with the session duration; then the project directory and git (with the branch's PR), which always close it. Other new display is opt-in; see the scope section of CONTRIBUTING.md.
+- The default HUD is four lines: model with effort, context, session cost and usage; config counts with the session duration; then the project directory and git (with the branch's PR), which always close it. Other new display is opt-in; see the scope section of CONTRIBUTING.md.
 - Text from stdin, the transcript, git, or config is untrusted terminal input. Sanitize it (`utils/sanitize.ts`) before it's printed.
 - Rendering is pure: the clock is sampled once by `hud.mjs` and terminal width once in `renderLines`.
 - `tests/golden.test.js` pins end-to-end output. An output change must show up as a reviewed diff to `tests/golden/expected.txt`.

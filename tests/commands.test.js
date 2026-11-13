@@ -149,7 +149,7 @@ const FIELDS = { note: 'string', columns: 'number', stdin: 'object', expect: 'ar
 test('report prints a case that fits the fixture schema and leaks nothing private', () => withHome(({ run, project, configPath }) => {
   assert.equal(run(['report']).status, 1, 'nothing to report before a render');
   mkdirSync(path.dirname(configPath), { recursive: true });
-  writeFileSync(configPath, JSON.stringify({ display: { customLine: 'acme-internal', showCost: true } }));
+  writeFileSync(configPath, JSON.stringify({ display: { customLine: 'acme-internal', showCost: false } }));
   run([], { input: payload(project), columns: 80 });
 
   const result = run(['report', '--note', 'the bar is wrong', '--expect', 'contains 45%']);
@@ -160,7 +160,7 @@ test('report prints a case that fits the fixture schema and leaks nothing privat
   assert.equal(testCase.columns, 80);
   assert.equal(testCase.stdin.model.display_name, 'Opus');
   assert.equal(testCase.stdin.context_window.used_percentage, 45);
-  assert.equal(testCase.config.display.showCost, true);
+  assert.equal(testCase.config.display.showCost, false);
   assert.equal(testCase.config.display.customLine, 'xxxxxxxxxxxxx', 'free text keeps its width');
 
   for (const secret of ['secret-project', 'session-4f2a', 'acme', 'merger', path.basename(path.dirname(project))]) {

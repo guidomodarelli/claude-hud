@@ -4,7 +4,7 @@ Thanks for contributing to Claude HUD. This repo is small and fast-moving, so we
 
 ## Scope
 
-The default HUD stays a four-line statusline: model with effort, context and usage; config counts with the session duration; then the project directory and git with the branch's PR. New display stays opt-in unless it fixes a wrong default. Do not add onboarding steps.
+The default HUD stays a four-line statusline: model with effort, context, session cost and usage; config counts with the session duration; then the project directory and git with the branch's PR. New display stays opt-in unless it fixes a wrong default. Do not add onboarding steps.
 
 We will not take:
 
