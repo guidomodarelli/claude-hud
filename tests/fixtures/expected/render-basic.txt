@@ -1,2 +1,2 @@
-[Opus] │ my-project
-Context ██░░░░░░░░ 23%
+[Opus] ██░░░░░░░░ 23%
+my-project

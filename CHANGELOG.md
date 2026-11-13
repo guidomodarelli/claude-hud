@@ -4,6 +4,21 @@ All notable changes to Claude HUD will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- `gitStatus.showPullRequest`: after the branch, the git block shows its GitHub pull request as a clickable `#123` with Nerd Font icons, colored by state, and its checks (passed, failed or running). The collector asks the `gh` CLI in a detached worker and caches the answer for a minute, so a render never waits for GitHub. On `main`, `master` and `develop` only an open PR shows. On by default (#1).
+- `gitStatus.style`: `"shell"` draws git as a shell prompt does, with Nerd Font icons: the branch (red once its upstream is gone, the short SHA when detached), `↑↓` in cyan, staged, modified, untracked and conflicted counts or a check mark when clean, then the PR. `"classic"` keeps `git:(main*)`. `"shell"` by default (#1).
+- `display.projectLayout` and `gitStatus.layout`: `"line"` moves the project directory and the git block to their own lines at the end of the HUD; `"inline"` keeps the old first line. `"line"` by default (#1).
+
+### Changed
+- The default HUD is now: the model with its reasoning effort, context and usage on one line (`display.showEffortLevel` and the short `display.usageCompact` on, `display.mergeGroups` now `[["project","addedDirs","context","usage"]]`): `[Opus ◑ high] █████░░░░░ 45% │ 5h: ███░░░░░░░ 25% (1h 30m)`; the CLAUDE.md, MCP and hook counts with the session duration under it (`display.showConfigCounts` and `display.showDuration` on); then the directory's name and the git line with the PR (#1).
+- New `display.contextBesideModel`: the expanded layout shows the context bar and percent right after the model badge, without the `Context` label, as compact does. On by default (#1).
+- New `display.usageCompactBar`: with `display.usageCompact`, each window gets a progress bar before its percent. On by default (#1).
+- `display.showSpendLimit`: the organization's monthly spend cap that Claude Code reports (`rate_limits.spend_limit`) shows as a bar beside the usage windows, `spend: ██░░░░░░░░ 20% (20d)`. `display.spendLimitUsd` names the cap in dollars to add the amounts, `$100/$500`. On by default, and it appears only when Claude Code reports a cap (#1).
+- New `display.durationPlacement`: `"environment"` (default) shows the duration after the config counts in the expanded layout; `"firstLine"` keeps it on the model's line (#1).
+
+### Fixed
+- A width under 10 columns, as a status line wrapper without a TTY passes, counts as unknown instead of cutting every line down to `.` (#1).
+
 ## [0.15.3] - 2026-11-10
 
 ### Added

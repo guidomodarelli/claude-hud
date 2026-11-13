@@ -23,6 +23,14 @@ export interface FileStats {
   trackedFiles: TrackedFile[];
 }
 
+/** Entries by where they differ, as a shell prompt counts them: one entry can be staged and modified. */
+export interface GitChanges {
+  staged: number;
+  modified: number;
+  untracked: number;
+  conflicted: number;
+}
+
 export interface GitStatus {
   branch: string;
   isDirty: boolean;
@@ -35,6 +43,10 @@ export interface GitStatus {
   vcs?: 'git' | 'jj';
   /** jj-native: true when the working-copy commit has an unresolved conflict. */
   conflict?: boolean;
+  /** git only, from a full status: what the `shell` style counts. */
+  changes?: GitChanges;
+  /** git only: the branch tracks an upstream that no longer exists (`[gone]`). */
+  upstreamGone?: boolean;
 }
 
 /** The `workspace.repo` identity Claude Code parses from the origin remote. */
@@ -74,6 +86,8 @@ export async function getGitStatus(ask: Ask, options: GitStatusOptions = {}): Pr
     ahead: parsed.ahead,
     behind: parsed.behind,
     branchUrl: githubRefUrl(options.repo, branch),
+    changes: parsed.changes,
+    upstreamGone: parsed.upstream !== null && !parsed.hasAheadBehind,
   };
   if (!parsed.dirty) return status;
 
@@ -113,11 +127,17 @@ async function describeDetachedHead(ask: Ask, oid: string | null): Promise<strin
 
 const GITHUB_NAME = /^[A-Za-z0-9_.-]+$/;
 
-function githubRefUrl(repo: GitRepoIdentity | null | undefined, ref: string): string | undefined {
+/** The repo's GitHub page, when Claude Code reported a github.com origin with plain owner and repo names. */
+export function githubRepoUrl(repo: GitRepoIdentity | null | undefined): string | undefined {
   if (repo?.host !== 'github.com' || !GITHUB_NAME.test(repo.owner ?? '') || !GITHUB_NAME.test(repo.name ?? '')) {
     return undefined;
   }
-  const base = `https://github.com/${repo.owner}/${repo.name}`;
+  return `https://github.com/${repo.owner}/${repo.name}`;
+}
+
+function githubRefUrl(repo: GitRepoIdentity | null | undefined, ref: string): string | undefined {
+  const base = githubRepoUrl(repo);
+  if (!base) return undefined;
   const sha = /^detached:([0-9a-f]+)$/.exec(ref)?.[1];
   return sha ? `${base}/commit/${sha}` : `${base}/tree/${ref.split('/').map(encodeURIComponent).join('/')}`;
 }
@@ -129,6 +149,10 @@ interface ParsedStatus {
   behind: number;
   dirty: boolean;
   fileStats: FileStats;
+  changes: GitChanges;
+  upstream: string | null;
+  /** git prints `# branch.ab` only while the upstream exists. */
+  hasAheadBehind: boolean;
 }
 
 // Fields before the path in `git status --porcelain=v2` records, by record type.
@@ -142,8 +166,12 @@ export function parseStatus(output: string): ParsedStatus {
     behind: 0,
     dirty: false,
     fileStats: { modified: 0, added: 0, deleted: 0, untracked: 0, trackedFiles: [] },
+    changes: { staged: 0, modified: 0, untracked: 0, conflicted: 0 },
+    upstream: null,
+    hasAheadBehind: false,
   };
   const stats = parsed.fileStats;
+  const changes = parsed.changes;
   const records = output.split('\0');
 
   for (let i = 0; i < records.length; i++) {
@@ -153,7 +181,10 @@ export function parseStatus(output: string): ParsedStatus {
     } else if (record.startsWith('# branch.head ')) {
       const head = record.slice('# branch.head '.length);
       parsed.head = head === '(detached)' ? null : head;
+    } else if (record.startsWith('# branch.upstream ')) {
+      parsed.upstream = record.slice('# branch.upstream '.length);
     } else if (record.startsWith('# branch.ab ')) {
+      parsed.hasAheadBehind = true;
       const match = /^\+(\d+) -(\d+)$/.exec(record.slice('# branch.ab '.length));
       if (match) {
         parsed.ahead = Number(match[1]);
@@ -162,10 +193,12 @@ export function parseStatus(output: string): ParsedStatus {
     } else if (record.startsWith('? ')) {
       parsed.dirty = true;
       stats.untracked++;
+      changes.untracked++;
     } else if (record[1] === ' ' && record[0] in PATH_FIELD) {
       parsed.dirty = true;
       const fullPath = pathAfterFields(record, PATH_FIELD[record[0]]);
       if (record[0] === '2') i++; // A rename or copy is followed by its original path.
+      countChange(changes, record[0], record[2], record[3]);
       const type = classify(record[2], record[3]);
       if (!type) continue;
       stats[type]++;
@@ -173,6 +206,16 @@ export function parseStatus(output: string): ParsedStatus {
     }
   }
   return parsed;
+}
+
+// `.` means unchanged on that side; an unmerged (`u`) entry counts only as a conflict.
+function countChange(changes: GitChanges, kind: string, index: string, worktree: string): void {
+  if (kind === 'u') {
+    changes.conflicted++;
+    return;
+  }
+  if (index !== '.') changes.staged++;
+  if (worktree !== '.') changes.modified++;
 }
 
 function pathAfterFields(record: string, fields: number): string {

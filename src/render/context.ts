@@ -4,6 +4,7 @@ import { t } from '../i18n/index.ts';
 import { formatContextValue, formatTokens } from '../utils/format.ts';
 import { contextUsage } from './derive.ts';
 import { barLabel, type LabelAlign } from './labels.ts';
+import { modelBadge } from './parts.ts';
 
 function thresholds(f: Frame) {
   return {
@@ -33,6 +34,16 @@ export function tokenBreakdown(f: Frame): string {
   const input = formatTokens(usage.input_tokens ?? 0);
   const cache = formatTokens((usage.cache_creation_input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0));
   return label(` (${t('format.in')}: ${input}, ${t('format.cache')}: ${cache})`, f.config?.colors);
+}
+
+/**
+ * The model badge with the context value right after it, e.g. `[Opus ◑ high] 45%` (plus the bar when
+ * showContextBar is on), moved as the 'model' segment. Compact always shows context this way; expanded
+ * does with display.contextBesideModel.
+ */
+export function modelCluster(f: Frame): string {
+  const { bar, value } = contextBarAndValue(f);
+  return [f.config?.display?.showModel !== false ? modelBadge(f) : null, bar, value].filter(Boolean).join(' ');
 }
 
 export function contextLine(f: Frame, align: LabelAlign = {}): string {

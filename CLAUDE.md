@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Claude HUD is a Claude Code plugin: a [status line](https://code.claude.com/docs/en/statusline) command that prints a two-line HUD (model, project, git, context, usage), plus opt-in lines for tools, agents, todos, and more.
+Claude HUD is a Claude Code plugin: a [status line](https://code.claude.com/docs/en/statusline) command that prints a four-line HUD (model, context and usage, then the project directory, then git with the branch's PR), plus opt-in lines for tools, agents, todos, and more.
 
 ## Commands
 
@@ -20,7 +20,7 @@ node verify/run.mjs corpus escape arch   # some of the owner's checks that gate 
 Logic is everything in `src/`. It runs caged and holds no capabilities. The owner's files below hold them, and logic can't change them. `ARCHITECTURE.md` draws the line and one render, and is itself a test. Your side of the line is the `AGENT` list at the top of `maintainer/act.mjs`.
 
 - `hud.mjs`: Node gate, stdin, `runCage` (the one way logic runs, for renders, subcommands and every check), the terminal filter, the heartbeat, subcommand dispatch. It runs Node: the cage, or, under Bun, the whole run.
-- `collector.mjs`: the only code that runs a program other than Node (`git`, `jj`, `vm_stat`, `taskkill`, the extra command), and the only code that works out a path. It writes the HUD's own files (`config.json` for `set`, the heartbeat, `stripped/`). Logic picks probes by name and reads files only from the `paths` it is given (`logicPaths`), which are exactly its read grants.
+- `collector.mjs`: the only code that runs a program other than Node (`git`, `jj`, `gh`, `vm_stat`, `taskkill`, the extra command), and the only code that works out a path. It writes the HUD's own files (`config.json` for `set`, the heartbeat, `stripped/`). Logic picks probes by name and reads files only from the `paths` it is given (`logicPaths`), which are exactly its read grants.
 - `fence.mjs`: the import allow list, deleted globals, and the loader for `stripped/`.
 - `install.mjs`: `hud install`, which writes `statusLine` in the user's `settings.json` and copies the launcher.
 - `scripts/statusline.mjs`: the launcher `hud install` copies; it runs the newest installed version through `dist/index.js` or `src/index.ts`.
@@ -41,7 +41,7 @@ Claude Code runs the command after each message, `/compact`, a mode change, a ra
 
 ## Invariants
 
-- The default HUD is two lines. New display is opt-in; see the scope section of CONTRIBUTING.md.
+- The default HUD is four lines: model with effort, context and usage; config counts with the session duration; then the project directory and git (with the branch's PR), which always close it. Other new display is opt-in; see the scope section of CONTRIBUTING.md.
 - Text from stdin, the transcript, git, or config is untrusted terminal input. Sanitize it (`utils/sanitize.ts`) before it's printed.
 - Rendering is pure: the clock is sampled once by `hud.mjs` and terminal width once in `renderLines`.
 - `tests/golden.test.js` pins end-to-end output. An output change must show up as a reviewed diff to `tests/golden/expected.txt`.

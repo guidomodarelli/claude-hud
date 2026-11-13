@@ -93,11 +93,8 @@ export function addedDirs(f: Frame, prefix: string, joiner: string): string | nu
   return shown.join(joiner);
 }
 
-/**
- * The project path with its VCS segment, as one part or, with
- * branchOverflow "wrap", two. Expanded links the path and inlines added dirs.
- */
-export function projectParts(f: Frame, layout: Layout): string[] {
+/** The project path; expanded links it and inlines added dirs. */
+function projectSegment(f: Frame, layout: Layout): string | null {
   const display = f.config?.display;
   const colors = f.config?.colors;
   let project: string | null = null;
@@ -112,13 +109,30 @@ export function projectParts(f: Frame, layout: Layout): string[] {
     const dirs = addedDirs(f, '+', ' ');
     if (dirs) project = project ? `${project} ${dirs}` : dirs;
   }
+  return project;
+}
 
-  const vcs = vcsPart(f, layout);
+const projectOnOwnLine = (f: Frame): boolean => (f.config?.display?.projectLayout ?? DEFAULT_CONFIG.display.projectLayout) === 'line';
+const vcsOnOwnLine = (f: Frame): boolean => (f.config?.gitStatus?.layout ?? DEFAULT_CONFIG.gitStatus.layout) === 'line';
+
+/**
+ * The project path with its VCS segment, as one part or, with
+ * branchOverflow "wrap", two. A segment set to its own line is left out.
+ */
+export function projectParts(f: Frame, layout: Layout): string[] {
+  const project = projectOnOwnLine(f) ? null : projectSegment(f, layout);
+  const vcs = vcsOnOwnLine(f) ? null : vcsPart(f, layout);
   if (project && vcs) {
     const overflow = f.config.gitStatus?.branchOverflow ?? DEFAULT_CONFIG.gitStatus.branchOverflow;
     return overflow === 'wrap' ? [project, vcs] : [`${project} ${vcs}`];
   }
   return [project ?? vcs].filter((part): part is string => !!part);
+}
+
+/** The project path and the VCS segment set to their own lines (`display.projectLayout`, `gitStatus.layout`), in that order, for the end of the HUD. */
+export function projectLines(f: Frame, layout: Layout): string[] {
+  return [projectOnOwnLine(f) ? projectSegment(f, layout) : null, vcsOnOwnLine(f) ? vcsPart(f, layout) : null]
+    .filter((line): line is string => !!line);
 }
 
 const ADVISOR_MAX_LENGTH = 64;
@@ -154,6 +168,9 @@ export function versionPart(f: Frame): string | null {
   const version = f.config?.display?.showClaudeCodeVersion ? claudeCodeVersion(f) : undefined;
   return labeled(f, version && `CC v${version}`);
 }
+
+/** Where expanded shows the duration; compact has one session line and ignores it. */
+export const durationOnEnvironmentLine = (f: Frame): boolean => (f.config?.display?.durationPlacement ?? DEFAULT_CONFIG.display.durationPlacement) === 'environment';
 
 export function durationPart(f: Frame): string | null {
   const duration = f.config?.display?.showDuration === true ? sessionDuration(f) : '';

@@ -46,11 +46,15 @@ async function outside() {
   const png = screenshot(path.join(out, 'screen.html'), path.join(out, 'screen.png'));
   step('screenshot');
 
-  // The HUD is the block under Claude Code's input box: after the last rule, up to the Context row.
+  // The HUD is the block under Claude Code's input box: after the last rule, up to the git row that closes
+  // it, or the Context row when there is none.
   const lines = r.screen.split('\n');
   const rule = lines.findLastIndex((l) => /─{20}/.test(visible(l)));
   const block = lines.slice(rule + 1);
-  const rows = block.slice(0, block.findLastIndex((l) => visible(l).includes('Context')) + 1).filter((l) => visible(l).trim());
+  // The git row in the default `shell` style: the Nerd Font branch icon, then the branch.
+  const gitRow = / main\b/;
+  const last = Math.max(block.findLastIndex((l) => visible(l).includes('Context')), block.findLastIndex((l) => gitRow.test(visible(l))));
+  const rows = block.slice(0, last + 1).filter((l) => visible(l).trim());
   const text = rows.map((l) => visible(l).trimEnd());
   const sorted = [...r.ms].sort((a, b) => a - b);
   const p = (q) => sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))];
@@ -58,8 +62,9 @@ async function outside() {
   const unsafe = unsafeEscape(rows.join('\n').replace(/\x1b\]8;[^;\x07\x1b]*;/g, '\x1b]8;;')) ?? unsafeEscape(r.raw);
   const checks = [
     ['HUD rows on screen', rows.length >= 2 && /\[.+\]/.test(text[0]) || `found ${rows.length} rows`],
-    ['model, project and git on row 1', /\[.+\].*proj.*git:\(main\)/.test(text[0] ?? '') || text[0]],
-    ['usage from the API headers reached the HUD', text.some((l) => /Usage .*25%/.test(l)) || 'no Usage 25%'],
+    ['model on row 1, then the project row and the git row close the HUD',
+      (/^\s*\[.+\]/.test(text[0] ?? '') && /proj/.test(text.at(-2) ?? '') && gitRow.test(text.at(-1) ?? '')) || text.join(' / ')],
+    ['usage from the API headers reached the HUD', text.some((l) => /5h: .*25%/.test(l)) || 'no 5h 25%'],
     ['no screen row wider than the pane', rows.every((l) => cells(l) <= COLS) || 'too wide'],
     ['no HUD line wider than COLUMNS - 4', r.raw.split('\n').every((l) => cells(l) <= COLS - 4) || `widest ${Math.max(...r.raw.split('\n').map(cells))}`],
     ['only colour and allowed links reach the terminal', !unsafe || unsafe],
@@ -143,11 +148,13 @@ async function inside(work) {
   let screen;
   try {
     await tmux('new-session', '-d', '-s', 't', '-x', String(COLS), '-y', String(ROWS), '-c', user.proj, 'claude');
-    await waitFor('Context');
+    // The default HUD's git row, the Nerd Font branch icon and the branch, shows it rendered.
+    await waitFor('\ue725 main');
     step('HUD on screen');
     await tmux('send-keys', '-t', 't', 'say hi', 'Enter');
     await waitFor('mock reply');
-    await waitFor('Usage');
+    // Usage in its default short form, `5h: ███░░░░░░░ 25% (…)`.
+    await waitFor('5h:');
     await new Promise((r) => setTimeout(r, 1000));
     step(`reply and usage on screen; the fake API served ${api.requests.length} request(s)`);
     screen = await tmux('capture-pane', '-e', '-p', '-t', 't');

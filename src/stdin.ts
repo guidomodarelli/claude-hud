@@ -119,6 +119,13 @@ function parseResetAt(value: unknown): Date | null {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? new Date(value * 1000) : null;
 }
 
+/** The organization's spend cap Claude Code reports: the share used and when it resets. Null when there is none. */
+export function getSpendLimitFromStdin(stdin: StdinData): { percent: number; resetAt: Date | null } | null {
+  const window = stdin.rate_limits?.spend_limit;
+  const percent = parsePercent(window?.used_percentage);
+  return percent === null ? null : { percent, resetAt: parseResetAt(window?.resets_at) };
+}
+
 export function getUsageFromStdin(stdin: StdinData): UsageData | null {
   const limits = stdin.rate_limits;
   const fiveHour = parsePercent(limits?.five_hour?.used_percentage);

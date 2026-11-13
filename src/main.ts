@@ -6,6 +6,7 @@ import { shownAgents } from "./render/activity.ts";
 import { countConfigs, type ConfigCounts } from "./config-reader.ts";
 import { getGitStatus, type GitRepoIdentity, type GitStatus } from "./git.ts";
 import { getJjStatus } from "./jj.ts";
+import { getPullRequest, type PullRequest } from "./pull-request.ts";
 import { loadConfigFiles, type HudConfig } from "./config.ts";
 import { extraCmdLabel } from "./extra-cmd.ts";
 import { getMemoryUsage, readMemory, type MemoryFacts } from "./memory.ts";
@@ -51,6 +52,12 @@ async function resolveVcsStatus(
     : null;
 }
 
+// The PR follows the branch git reported; jj has no branch gh could look up.
+async function resolvePullRequest(config: HudConfig, ask: Ask, gitStatus: GitStatus | null, repo?: GitRepoIdentity | null): Promise<PullRequest | null> {
+  if (!config.gitStatus.showPullRequest || !gitStatus || gitStatus.vcs === "jj") return null;
+  return getPullRequest(ask, repo, gitStatus.branch);
+}
+
 /** Where a render's inputs come from. `files: false` renders from stdin alone, as a report's case does. */
 export interface Sources {
   ask: Ask;
@@ -85,6 +92,7 @@ export async function renderStdin(stdin: StdinData, config: HudConfig, { ask, fi
     resolveVcsStatus(config, ask, stdin.cwd, stdin.workspace?.repo),
   ]);
 
+  const pullRequest = await resolvePullRequest(config, ask, gitStatus, stdin.workspace?.repo);
   const usageData = display.showUsage ? resolveUsage(config, stdinUsage, answers["usage.read"], now) : null;
   const lines = renderLines({
     stdin,
@@ -96,6 +104,7 @@ export async function renderStdin(stdin: StdinData, config: HudConfig, { ask, fi
       : null,
     outputSpeed: display.showSpeed ? getOutputSpeed(stdin, dataDir) : null,
     gitStatus,
+    pullRequest,
     usageData,
     memoryUsage: "memory" in answers ? getMemoryUsage(readMemory(answers.memory as MemoryFacts)) : null,
     config,

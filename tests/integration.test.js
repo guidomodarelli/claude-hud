@@ -24,6 +24,10 @@ function skipIfSpawnBlocked(result, t) {
   return false;
 }
 
+// By default the project path, with its inline added dirs, has its own line at the end of the HUD (these
+// projects aren't git repos, so no git line follows it).
+const PROJECT_LINE_INDEX = -1;
+
 test("CLI renders expected output for a basic transcript", async (t) => {
   const fixturePath = fileURLToPath(
     new URL("./fixtures/transcript-render.jsonl", import.meta.url),
@@ -115,11 +119,11 @@ test("CLI renders added_dirs basenames on the project line", async (t) => {
 
     assert.equal(result.error, undefined, result.error?.message);
     assert.equal(result.status, 0, result.stderr || "non-zero exit");
-    const firstLine = stripAnsi(result.stdout).split("\n")[0];
-    assert.match(firstLine, /\+lib-foo/);
-    assert.match(firstLine, /\+some-other-repo/);
+    const projectLine = stripAnsi(result.stdout).trimEnd().split("\n").at(PROJECT_LINE_INDEX);
+    assert.match(projectLine, /\+lib-foo/);
+    assert.match(projectLine, /\+some-other-repo/);
     assert.ok(
-      firstLine.indexOf("my-project") < firstLine.indexOf("+lib-foo"),
+      projectLine.indexOf("my-project") < projectLine.indexOf("+lib-foo"),
       "added dirs should come after the project name",
     );
   } finally {
@@ -158,8 +162,8 @@ test("CLI omits added dirs section when array is empty", async (t) => {
     if (skipIfSpawnBlocked(result, t)) return;
 
     assert.equal(result.status, 0, result.stderr || "non-zero exit");
-    const firstLine = stripAnsi(result.stdout).split("\n")[0];
-    assert.doesNotMatch(firstLine, /\+/);
+    const projectLine = stripAnsi(result.stdout).trimEnd().split("\n").at(PROJECT_LINE_INDEX);
+    assert.doesNotMatch(projectLine, /\+/);
   } finally {
     await rm(homeDir, { recursive: true, force: true });
   }
@@ -197,8 +201,8 @@ test("CLI tolerates added_dirs: null without crashing", async (t) => {
 
     assert.equal(result.error, undefined, result.error?.message);
     assert.equal(result.status, 0, result.stderr || "non-zero exit");
-    const firstLine = stripAnsi(result.stdout).split("\n")[0];
-    assert.doesNotMatch(firstLine, /\+/);
+    const projectLine = stripAnsi(result.stdout).trimEnd().split("\n").at(PROJECT_LINE_INDEX);
+    assert.doesNotMatch(projectLine, /\+/);
     assert.doesNotMatch(stripAnsi(result.stdout), /Added dirs:/);
   } finally {
     await rm(homeDir, { recursive: true, force: true });
@@ -245,12 +249,12 @@ test("CLI ignores non-string and post-sanitize-empty added_dirs entries", async 
 
     assert.equal(result.error, undefined, result.error?.message);
     assert.equal(result.status, 0, result.stderr || "non-zero exit");
-    const firstLine = stripAnsi(result.stdout).split("\n")[0];
-    assert.match(firstLine, /\+valid-one/);
-    assert.match(firstLine, /\+valid-two/);
-    const plusCount = (firstLine.match(/\+valid-/g) || []).length;
+    const projectLine = stripAnsi(result.stdout).trimEnd().split("\n").at(PROJECT_LINE_INDEX);
+    assert.match(projectLine, /\+valid-one/);
+    assert.match(projectLine, /\+valid-two/);
+    const plusCount = (projectLine.match(/\+valid-/g) || []).length;
     assert.equal(plusCount, 2, "only the two valid basenames should render");
-    assert.doesNotMatch(firstLine, /\+ /, "no bare '+' from control-char-only basename");
+    assert.doesNotMatch(projectLine, /\+ /, "no bare '+' from control-char-only basename");
   } finally {
     await rm(homeDir, { recursive: true, force: true });
   }
@@ -293,13 +297,13 @@ test("CLI caps inline added_dirs at 5 with overflow indicator", async (t) => {
     if (skipIfSpawnBlocked(result, t)) return;
 
     assert.equal(result.status, 0, result.stderr || "non-zero exit");
-    const firstLine = stripAnsi(result.stdout).split("\n")[0];
+    const projectLine = stripAnsi(result.stdout).trimEnd().split("\n").at(PROJECT_LINE_INDEX);
     for (let i = 1; i <= 5; i++) {
-      assert.match(firstLine, new RegExp(`\\+dir-${i}\\b`));
+      assert.match(projectLine, new RegExp(`\\+dir-${i}\\b`));
     }
-    assert.doesNotMatch(firstLine, /\+dir-6\b/);
-    assert.doesNotMatch(firstLine, /\+dir-7\b/);
-    assert.match(firstLine, /\+2 more/);
+    assert.doesNotMatch(projectLine, /\+dir-6\b/);
+    assert.doesNotMatch(projectLine, /\+dir-7\b/);
+    assert.match(projectLine, /\+2 more/);
   } finally {
     await rm(homeDir, { recursive: true, force: true });
   }
@@ -341,10 +345,10 @@ test("CLI truncates long inline added_dirs basenames", async (t) => {
     if (skipIfSpawnBlocked(result, t)) return;
 
     assert.equal(result.status, 0, result.stderr || "non-zero exit");
-    const firstLine = stripAnsi(result.stdout).split("\n")[0];
-    assert.match(firstLine, /\+a+…/, "long basename should be truncated with ellipsis");
-    assert.doesNotMatch(firstLine, new RegExp(`\\+${longName}`));
-    const m = firstLine.match(/\+(a+…)/);
+    const projectLine = stripAnsi(result.stdout).trimEnd().split("\n").at(PROJECT_LINE_INDEX);
+    assert.match(projectLine, /\+a+…/, "long basename should be truncated with ellipsis");
+    assert.doesNotMatch(projectLine, new RegExp(`\\+${longName}`));
+    const m = projectLine.match(/\+(a+…)/);
     assert.ok(m && m[1].length <= 24, `truncated name should be ≤24 chars, got ${m && m[1].length}`);
   } finally {
     await rm(homeDir, { recursive: true, force: true });
@@ -445,10 +449,11 @@ test("CLI renders inline added_dirs even when showProject is false", async (t) =
     if (skipIfSpawnBlocked(result, t)) return;
 
     assert.equal(result.status, 0, result.stderr || "non-zero exit");
-    const firstLine = stripAnsi(result.stdout).split("\n")[0];
-    assert.match(firstLine, /\[Opus\]/, "model bracket should still render (sanity)");
-    assert.doesNotMatch(firstLine, /my-project/, "project name should be hidden");
-    assert.match(firstLine, /\+lib-foo/, "added dirs should still render");
+    const lines = stripAnsi(result.stdout).trimEnd().split("\n");
+    const projectLine = lines.at(PROJECT_LINE_INDEX);
+    assert.match(lines[0], /\[Opus\]/, "model bracket should still render (sanity)");
+    assert.doesNotMatch(projectLine, /my-project/, "project name should be hidden");
+    assert.match(projectLine, /\+lib-foo/, "added dirs should still render");
   } finally {
     await rm(homeDir, { recursive: true, force: true });
   }

@@ -46,7 +46,10 @@ test('getGitStatus returns null without a cwd or outside a repo', async () => {
 
 test('getGitStatus reports a clean branch', async () => {
   await withRepo(async ({ dir }) => {
-    assert.deepEqual(await getGitStatus(dir), { branch: 'main', isDirty: false, ahead: 0, behind: 0, branchUrl: undefined });
+    assert.deepEqual(await getGitStatus(dir), {
+      branch: 'main', isDirty: false, ahead: 0, behind: 0, branchUrl: undefined,
+      changes: { staged: 0, modified: 0, untracked: 0, conflicted: 0 }, upstreamGone: false,
+    });
   });
 });
 
@@ -281,6 +284,18 @@ test('parseStatus reads porcelain v2 headers and every record type', () => {
   assert.equal(parsed.fileStats.trackedFiles[0].basename, 'with space.ts');
   assert.equal(parsed.fileStats.modified, 3);
   assert.equal(parsed.fileStats.untracked, 1);
+  // As a shell prompt counts: the rename is staged, `.M` and `.T` are modified, the unmerged entry is only a conflict.
+  assert.deepEqual(parsed.changes, { staged: 1, modified: 2, untracked: 1, conflicted: 1 });
+  assert.equal(parsed.upstream, 'origin/main');
+  assert.equal(parsed.hasAheadBehind, true);
+});
+
+test('parseStatus counts an entry both staged and modified, and spots a gone upstream', () => {
+  const output = ['# branch.head feat', '# branch.upstream origin/feat', '1 MM N... 100644 100644 100644 aaaa aaaa both.ts', ''].join(' ');
+  const parsed = parseStatus(output);
+  assert.deepEqual(parsed.changes, { staged: 1, modified: 1, untracked: 0, conflicted: 0 });
+  assert.equal(parsed.upstream, 'origin/feat');
+  assert.equal(parsed.hasAheadBehind, false, 'git omits branch.ab once the upstream is gone');
 });
 
 test('parseNumstat keys renames by their new path and skips binary files', () => {

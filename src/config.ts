@@ -26,6 +26,12 @@ const TIME_FORMATS = ['relative', 'absolute', 'both', 'elapsed', 'elapsedAndAbso
 const HOUR_CYCLES = ['auto', 'h11', 'h12', 'h23', 'h24'] as const;
 const CUSTOM_LINE_POSITIONS = ['first', 'last'] as const;
 const ADDED_DIRS_LAYOUTS = ['inline', 'line'] as const;
+// inline: a segment of the first line; line: its own line at the end of the HUD.
+const SEGMENT_LAYOUTS = ['inline', 'line'] as const;
+// shell: a shell prompt's git segment with Nerd Font icons; classic: `git:(main*)`.
+const GIT_STYLES = ['shell', 'classic'] as const;
+// Expanded only. environment: after the config counts, under the model; firstLine: on the model's line.
+const DURATION_PLACEMENTS = ['environment', 'firstLine'] as const;
 const WEEKLY_COST_PERIODS = ['quota', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 const COLOR_NAMES = ['dim', 'red', 'green', 'yellow', 'magenta', 'cyan', 'brightBlue', 'brightMagenta'] as const;
 
@@ -73,6 +79,9 @@ export type TimeFormatMode = typeof TIME_FORMATS[number];
 export type HourCycleMode = typeof HOUR_CYCLES[number];
 export type CustomLinePosition = typeof CUSTOM_LINE_POSITIONS[number];
 export type AddedDirsLayout = typeof ADDED_DIRS_LAYOUTS[number];
+export type SegmentLayout = typeof SEGMENT_LAYOUTS[number];
+export type GitStyle = typeof GIT_STYLES[number];
+export type DurationPlacement = typeof DURATION_PLACEMENTS[number];
 export type WeeklyCostPeriod = typeof WEEKLY_COST_PERIODS[number];
 export type HudColorName = typeof COLOR_NAMES[number];
 export type HudElement = typeof ELEMENTS[number];
@@ -100,7 +109,9 @@ export interface HudColorOverrides {
 // sessionTokens and cost are left out so they keep their built-in place (the tokens summary's
 // last line, cost on the first line) until they're placed.
 export const DEFAULT_ELEMENT_ORDER: HudElement[] = ELEMENTS.filter(element => element !== 'sessionTokens' && element !== 'cost');
-export const DEFAULT_MERGE_GROUPS: HudElement[][] = [['context', 'usage']];
+// The model row (the project element) shares its line with context and usage; addedDirs sits between them in
+// the default order, so it joins the group (it only takes a slot with addedDirsLayout "line").
+export const DEFAULT_MERGE_GROUPS: HudElement[][] = [['project', 'addedDirs', 'context', 'usage']];
 // Empty keeps each renderer's native order until the user moves a segment.
 export const DEFAULT_PROJECT_LINE_ORDER: FirstLineSegment[] = [];
 
@@ -120,6 +131,10 @@ export interface HudConfig {
     showFileStats: boolean;
     showWorktree: boolean;
     branchOverflow: GitBranchOverflowMode;
+    layout: SegmentLayout;
+    style: GitStyle;
+    // The branch's GitHub PR number, linked, with its checks; read by the collector through `gh`.
+    showPullRequest: boolean;
     pushWarningThreshold: number;
     pushCriticalThreshold: number;
   };
@@ -132,9 +147,11 @@ export interface HudConfig {
     showModel: boolean;
     showProject: boolean;
     showLaunchDir: boolean;
+    projectLayout: SegmentLayout;
     showAddedDirs: boolean;
     addedDirsLayout: AddedDirsLayout;
     showContextBar: boolean;
+    contextBesideModel: boolean;
     contextValue: ContextValueMode;
     showConfigCounts: boolean;
     showCost: boolean;
@@ -145,6 +162,7 @@ export interface HudConfig {
     // What showWeeklyCost counts: the 7-day quota window, or a calendar week from 00:00 local time on a weekday.
     weeklyCostPeriod: WeeklyCostPeriod;
     showDuration: boolean;
+    durationPlacement: DurationPlacement;
     showSpeed: boolean;
     showTokenBreakdown: boolean;
     showUsage: boolean;
@@ -152,6 +170,12 @@ export interface HudConfig {
     usageBarEnabled: boolean;
     showResetLabel: boolean;
     usageCompact: boolean;
+    // With usageCompact: a progress bar before each window's percent.
+    usageCompactBar: boolean;
+    // The organization's spend cap from stdin (rate_limits.spend_limit), as a bar.
+    showSpendLimit: boolean;
+    // The cap in US dollars, to show the amounts; Claude Code reports only the share used.
+    spendLimitUsd: number | null;
     showModelScopedUsage: boolean;
     usagePace: boolean;
     showTools: boolean;
@@ -226,6 +250,9 @@ export const DEFAULT_CONFIG: HudConfig = {
     showFileStats: false,
     showWorktree: false,
     branchOverflow: 'truncate',
+    layout: 'line',
+    style: 'shell',
+    showPullRequest: true,
     pushWarningThreshold: 0,
     pushCriticalThreshold: 0,
   },
@@ -238,24 +265,30 @@ export const DEFAULT_CONFIG: HudConfig = {
     showModel: true,
     showProject: true,
     showLaunchDir: false,
+    projectLayout: 'line',
     showAddedDirs: true,
     addedDirsLayout: 'inline',
     showContextBar: true,
+    contextBesideModel: true,
     contextValue: 'percent',
-    showConfigCounts: false,
+    showConfigCounts: true,
     showCost: false,
     showRoutedCost: false,
     showDailyCost: false,
     showWeeklyCost: false,
     weeklyCostPeriod: 'quota',
-    showDuration: false,
+    showDuration: true,
+    durationPlacement: 'environment',
     showSpeed: false,
     showTokenBreakdown: true,
     showUsage: true,
     usageValue: 'percent',
     usageBarEnabled: true,
     showResetLabel: true,
-    usageCompact: false,
+    usageCompact: true,
+    usageCompactBar: true,
+    showSpendLimit: true,
+    spendLimitUsd: null,
     showModelScopedUsage: true,
     usagePace: false,
     showTools: false,
@@ -272,7 +305,7 @@ export const DEFAULT_CONFIG: HudConfig = {
     authUserFullEmail: false,
     authUserLength: 8,
     showClaudeCodeVersion: false,
-    showEffortLevel: false,
+    showEffortLevel: true,
     effortFormat: 'full',
     showAgentEffort: false,
     showMemoryUsage: false,
@@ -403,9 +436,13 @@ const RULES: Record<string, Rule> = {
   'elementOrder': names(ELEMENTS, true),
   'projectLineOrder': names(FIRST_LINE_SEGMENTS, false),
   'gitStatus.branchOverflow': oneOf(GIT_BRANCH_OVERFLOW_MODES),
+  'gitStatus.layout': oneOf(SEGMENT_LAYOUTS),
+  'gitStatus.style': oneOf(GIT_STYLES),
   'gitStatus.pushWarningThreshold': floorAtLeastZero,
   'gitStatus.pushCriticalThreshold': floorAtLeastZero,
   'display.addedDirsLayout': oneOf(ADDED_DIRS_LAYOUTS),
+  'display.projectLayout': oneOf(SEGMENT_LAYOUTS),
+  'display.durationPlacement': oneOf(DURATION_PLACEMENTS),
   'display.contextValue': oneOf(CONTEXT_VALUE_MODES),
   'display.weeklyCostPeriod': oneOf(WEEKLY_COST_PERIODS),
   'display.usageValue': oneOf(USAGE_VALUE_MODES),
@@ -433,6 +470,7 @@ const RULES: Record<string, Rule> = {
   'display.timeFormat': oneOf(TIME_FORMATS),
   'display.hourCycle': oneOf(HOUR_CYCLES),
   'display.advisorOverride': text(80),
+  'display.spendLimitUsd': rule('a positive number of US dollars, or null', (value) => (isNumber(value) && value > 0 ? value : null)),
   'display.autoCompactWindow': rule('a positive whole number, or null', (value) => (Number.isInteger(value) && (value as number) > 0 ? value : null)),
   'colors.barFilled': barChar,
   'colors.barEmpty': barChar,

@@ -38,15 +38,21 @@ Then run `/reload-plugins` and `/hud` inside a session.
 
 ## What You See
 
-The default is two lines:
+The default is four lines:
 
 ```
-[Opus] │ my-project git:(main*)
-Context █████░░░░░ 45% │ Usage ██░░░░░░░░ 25% (resets in 1h 30m)
+[Opus ◑ high] █████░░░░░ 45% │ 5h: ███░░░░░░░ 25% (1h 30m)
+2 CLAUDE.md | 4 MCPs | 7 hooks | ⏱️  1h 5m
+my-project
+ main  2  1 —  #966 
 ```
 
-- **Line 1**: model, a provider label when one is detected (`Bedrock`, `Vertex`, `MiniMax`), project path, and git branch.
-- **Line 2**: context used (green, then yellow, then red as it fills) and your subscriber rate limits.
+- **Line 1**: model with its reasoning effort (`display.showEffortLevel`) and a provider label when one is detected (`Bedrock`, `Vertex`, `MiniMax`), then the context used right after it, as a bar and a percent that go green, then yellow, then red as it fills (`display.contextBesideModel`), and your subscriber rate limits in their short form with a bar, `5h: ███░░░░░░░ 25% (1h 30m)` (`display.usageCompact`, `display.usageCompactBar`). On a company plan with a monthly spend cap, the cap gets its own bar there too, `spend: ██░░░░░░░░ 20% (20d)`, with the dollars once you set `display.spendLimitUsd` (`$100/$500`); the HUD picks what to show from what Claude Code reports, so a subscription shows its windows and a cap shows its bar (`display.mergeGroups`; they stack on their own lines when the terminal is too narrow).
+- **Line 2**: CLAUDE.md, rules, MCP and hook counts (`display.showConfigCounts`), then how long the session has run (`display.showDuration`, `display.durationPlacement`).
+- **Line 3**: the project directory's name (`pathLevels`; `display.projectLayout: "inline"` puts it back on line 1).
+- **Line 4**: git as a shell prompt draws it, with Nerd Font icons: the branch, `↑↓` against its upstream, staged, modified, untracked and conflicted counts (a check mark when clean), and, from the `gh` CLI when it is installed and signed in, the branch's pull request as a clickable link with its checks, drawn with Nerd Font icons (`gitStatus.showPullRequest`; `gitStatus.layout: "inline"` puts git back on line 1; `gitStatus.style: "classic"` brings back `git:(main*)`). Needs a Nerd Font in the terminal.
+
+The directory and git lines always close the HUD, after any optional lines.
 
 Optional lines include tools, agents and todos, plus about a hundred other options:
 

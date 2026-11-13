@@ -32,7 +32,7 @@
   },
   "expect": [
     "exit 0",
-    "contains git:(feat/links* ↑2 ↓1)",
+    "contains \ue725 feat/links ↑2↓1",
     "every line closes its OSC 8 link",
     "only safe escapes",
     "no line wider than columns"

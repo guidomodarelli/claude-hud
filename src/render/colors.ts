@@ -8,6 +8,9 @@ const RED = '\x1b[31m';
 const GREEN = '\x1b[32m';
 const YELLOW = '\x1b[33m';
 const MAGENTA = '\x1b[35m';
+const BLUE = '\x1b[34m';
+const WHITE = '\x1b[37m';
+const BOLD = '\x1b[1m';
 const CYAN = '\x1b[36m';
 const BRIGHT_BLUE = '\x1b[94m';
 const BRIGHT_MAGENTA = '\x1b[95m';
@@ -75,6 +78,24 @@ export function cyan(text: string): string {
 
 export function magenta(text: string): string {
   return colorize(text, MAGENTA);
+}
+
+export function blue(text: string): string {
+  return colorize(text, BLUE);
+}
+
+export function white(text: string): string {
+  return colorize(text, WHITE);
+}
+
+/** Bold in `color`, one of the plain helpers above, which keeps its own reset. */
+export function bold(text: string, color: (text: string) => string): string {
+  return `${BOLD}${color(text)}`;
+}
+
+/** A 256-color palette index, for the greys a shell prompt uses. */
+export function shade(text: string, index: number): string {
+  return colorize(text, `\x1b[38;5;${index}m`);
 }
 
 export function dim(text: string): string {

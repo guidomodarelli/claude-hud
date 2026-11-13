@@ -333,7 +333,8 @@ export async function main({ argv = process.argv, env = process.env } = {}) {
     stdin = await readStdin();
     const setting = collector.userSettings(paths);
     const usage = collector.usagePaths(paths, env, setting);
-    const probes = collector.createProbes({ cwd: stdin?.cwd, argv, env, usage, early: collector.probesToStart(setting) });
+    const pullRequests = { dir: paths.pullRequestCacheDir, repo: stdin?.workspace?.repo };
+    const probes = collector.createProbes({ cwd: stdin?.cwd, argv, env, usage, early: collector.probesToStart(setting), pullRequests });
     const output = await runCage({ stdin, now, probes, env });
     if (output.snapshot) collector.writeUsageSnapshot(usage.write, output.snapshot);
     print(output.lines, stdin);

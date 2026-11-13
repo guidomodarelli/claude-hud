@@ -1,21 +1,26 @@
 import type { HudElement } from '../config.ts';
-import { DEFAULT_ELEMENT_ORDER, DEFAULT_MERGE_GROUPS, DEFAULT_PROJECT_LINE_ORDER } from '../config.ts';
+import { DEFAULT_CONFIG, DEFAULT_ELEMENT_ORDER, DEFAULT_MERGE_GROUPS, DEFAULT_PROJECT_LINE_ORDER } from '../config.ts';
 import type { Frame } from './frame.ts';
 import { activityLine } from './activity.ts';
 import { separatorLine, visibleWidth } from './ansi.ts';
-import { contextLine } from './context.ts';
+import { contextLine, modelCluster, tokenBreakdown } from './context.ts';
 import type { LabelAlign } from './labels.ts';
 import { addedDirsLine, cacheHitRateLine, environmentLine, memoryLine, promptCacheLine, sessionTimeLine } from './lines.ts';
 import { orderParts } from './order.ts';
 import {
-  advisorPart, authPart, compactionsPart, costPart, customLinePart, durationPart, extraPart, modelBadge,
-  projectParts, sessionNamePart, sessionTokensSummary, speedPart, versionPart, type Part,
+  advisorPart, authPart, compactionsPart, costPart, customLinePart, durationOnEnvironmentLine, durationPart, extraPart, modelBadge,
+  projectLines, projectParts, sessionNamePart, sessionTokensSummary, speedPart, versionPart, type Part,
 } from './parts.ts';
-import { usageParts } from './usage.ts';
+import { usageAndSpendParts, usageParts } from './usage.ts';
 import { gitFilesLine } from './vcs.ts';
 import { t } from '../i18n/index.ts';
 
 const ACTIVITY = new Set<HudElement>(['tools', 'skills', 'mcp', 'agents', 'todos']);
+
+const joinParts = (parts: Array<string | null>): string | null => parts.filter(Boolean).join(' | ') || null;
+
+// The context value rides with the model badge instead of its own `Context` element.
+const contextBesideModel = (f: Frame): boolean => f.config?.display?.contextBesideModel ?? DEFAULT_CONFIG.display.contextBesideModel;
 
 function elementOrder(f: Frame): HudElement[] {
   return f.config?.elementOrder ?? DEFAULT_ELEMENT_ORDER;
@@ -28,13 +33,14 @@ function projectLine(f: Frame): string | null {
     if (text) parts.push({ key, text });
   };
   add(customLinePart(f, 'first'));
-  if (display?.showModel !== false) add(modelBadge(f), 'model');
+  if (contextBesideModel(f)) add(`${modelCluster(f)}${tokenBreakdown(f)}`, 'model');
+  else if (display?.showModel !== false) add(modelBadge(f), 'model');
   for (const part of projectParts(f, 'expanded')) add(part, 'project');
   add(advisorPart(f), 'advisor');
   add(sessionNamePart(f), 'sessionName');
   add(versionPart(f), 'version');
   add(extraPart(f), 'extra');
-  add(durationPart(f), 'duration');
+  if (!durationOnEnvironmentLine(f)) add(durationPart(f), 'duration');
   // Until cost is placed in elementOrder, it stays on the first line.
   if (!elementOrder(f).includes('cost')) add(costPart(f), 'cost');
   add(speedPart(f), 'speed');
@@ -48,12 +54,12 @@ function elementLine(f: Frame, element: HudElement, align: LabelAlign = {}): str
   switch (element) {
     case 'project': return projectLine(f);
     case 'addedDirs': return addedDirsLine(f);
-    case 'context': return contextLine(f, align);
-    case 'usage': return usageParts(f, 'expanded', align)?.join(' | ') ?? null;
+    case 'context': return contextBesideModel(f) ? null : contextLine(f, align);
+    case 'usage': return usageAndSpendParts(f, 'expanded', align)?.join(' | ') ?? null;
     case 'promptCache': return promptCacheLine(f);
     case 'cacheHitRate': return cacheHitRateLine(f);
     case 'memory': return memoryLine(f, align);
-    case 'environment': return environmentLine(f);
+    case 'environment': return joinParts([environmentLine(f), durationOnEnvironmentLine(f) ? durationPart(f) : null]);
     case 'sessionTime': return sessionTimeLine(f);
     case 'sessionTokens': return f.config?.display?.showSessionTokens ? sessionTokensSummary(f, t('label.tokens')) : null;
     case 'cost': return costPart(f);
@@ -88,7 +94,7 @@ export function expandedLines(f: Frame): string[] {
 
   // A visible memory bar widens the label column of the other bars so they line up.
   const memoryVisible = order.includes('memory') && f.config?.display?.showMemoryUsage === true && f.memoryUsage != null;
-  const otherBarVisible = order.includes('context') || (order.includes('usage') && usageParts(f, 'expanded') !== null);
+  const otherBarVisible = (order.includes('context') && !contextBesideModel(f)) || (order.includes('usage') && usageParts(f, 'expanded') !== null);
   const separateAlign: LabelAlign = memoryVisible && otherBarVisible ? { align: true, includeMemoryInWidth: true } : {};
   const stackedAlign: LabelAlign = { align: true, includeMemoryInWidth: memoryVisible };
 
@@ -147,6 +153,8 @@ export function expandedLines(f: Frame): string[] {
   }
   const compactions = compactionsPart(f);
   if (compactions) lines.push(compactions);
+  // The project and git lines set apart close the HUD, and leave with the project element.
+  if (order.includes('project')) lines.push(...projectLines(f, 'expanded'));
 
   const firstActivity = rows.findIndex(({ activity }) => activity);
   if (f.config?.showSeparators && firstActivity > 0) {

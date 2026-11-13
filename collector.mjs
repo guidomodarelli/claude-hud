@@ -41,6 +41,8 @@ export function claudePaths(env = process.env, home = homeOf(env)) {
     overridePath: path.join(configDir, 'claude-hud.json'),
     undoPath: path.join(hudDir, 'config.undo.json'),
     heartbeat: path.join(hudDir, 'heartbeat.json'),
+    // Outside data/: logic never writes what the gh worker left, it only gets it as a probe's answer.
+    pullRequestCacheDir: path.join(hudDir, 'pull-requests'),
   };
 }
 
@@ -197,7 +199,8 @@ export function usagePaths(paths, env = process.env, setting = userSettings(path
  * guess at what logic will want: a wrong one costs a wasted run or a missed head start, never output.
  */
 export function probesToStart(setting) {
-  return setting('gitStatus', 'enabled') === false || setting('jjStatus', 'enabled') === true ? [] : ['git.status'];
+  if (setting('gitStatus', 'enabled') === false || setting('jjStatus', 'enabled') === true) return [];
+  return setting('gitStatus', 'showPullRequest') !== false ? ['git.status', 'github.pr'] : ['git.status'];
 }
 
 /** Absolute paths only, with ~ and ${VAR} expanded; the write path must end in .json. Logic only ever sees the raw strings. */
@@ -421,6 +424,96 @@ async function untrustedConfigOverrides(cwd) {
   return overrides;
 }
 
+// ---- GitHub pull requests. gh needs the network, so a render never waits for it: the probe answers
+// from a per-branch cache file and, when that is stale, starts a detached worker (this file, run with
+// --gh-worker) that asks gh and rewrites the file for a later render.
+
+export const PULL_REQUEST_REFRESH_MS = 60_000;
+const GH_TIMEOUT_MS = 15_000;
+const GH_MAX_OUTPUT_BYTES = 512 * 1024;
+const GH_FIELDS = 'number,state,isDraft,headRefName,statusCheckRollup';
+const GITHUB_NAME = /^[A-Za-z0-9_.-]+$/;
+// A name gh can only take as a branch: not a PR number, a URL, an option, nor `owner:branch`.
+const BRANCH_NAME = /^(?!-)(?!\d+$)[\w./-]{1,255}$/;
+
+/** What gh is asked about: `owner/name` from Claude Code's workspace.repo, and the checked-out branch. Null when either can't be passed safely. */
+export function pullRequestTarget(repo, branch) {
+  if (repo?.host !== 'github.com' || !GITHUB_NAME.test(repo.owner ?? '') || !GITHUB_NAME.test(repo.name ?? '')) return null;
+  if (typeof branch !== 'string' || branch === 'HEAD' || !BRANCH_NAME.test(branch)) return null;
+  return { repo: `${repo.owner}/${repo.name}`, branch };
+}
+
+/** gh as an argv prefix. On Windows only from absolute PATH entries, as git, so the repo's folder can't plant one. */
+export function ghCommand(platform = process.platform, env = process.env) {
+  const gh = platform === 'win32' ? resolveWindowsExecutable('gh', env) : 'gh';
+  return gh ? [gh] : null;
+}
+
+const pullRequestCacheFile = (dir, target) => path.join(dir, `${crypto.hash('sha256', `${target.repo}\0${target.branch}`)}.json`);
+
+function writePullRequestCache(file, record) {
+  const tmp = `${file}.${process.pid}.tmp`;
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(tmp, JSON.stringify(record), { mode: 0o600 });
+    fs.renameSync(tmp, file);
+    return true;
+  } catch {
+    fs.rmSync(tmp, { force: true });
+    return false;
+  }
+}
+
+function startPullRequestWorker(job) {
+  try {
+    const worker = spawn(process.execPath, [SELF, '--gh-worker', JSON.stringify(job)], { detached: true, stdio: 'ignore', windowsHide: true, shell: false });
+    worker.on('error', () => {});
+    worker.unref();
+  } catch { /* the next stale render tries again */ }
+}
+
+/**
+ * The cached gh answer for `target`, as { stdout } or null. A missing or stale cache is claimed with a
+ * fresh checkedAt before the worker starts, so the renders in between don't start another.
+ */
+export function readPullRequest(dir, target, { command = ghCommand(), now = Date.now(), startWorker = startPullRequestWorker } = {}) {
+  const file = pullRequestCacheFile(dir, target);
+  const cached = readJsonObject(file, GH_MAX_OUTPUT_BYTES * 2);
+  const stdout = typeof cached?.stdout === 'string' ? cached.stdout : null;
+  const checkedAt = Number.isFinite(cached?.checkedAt) ? cached.checkedAt : null;
+  const stale = checkedAt === null || checkedAt > now || now - checkedAt >= PULL_REQUEST_REFRESH_MS;
+  if (stale && command && writePullRequestCache(file, { checkedAt: now, stdout })) startWorker({ command, file, ...target });
+  return stdout === null ? null : { stdout };
+}
+
+/** The worker's job: one `gh pr view`, written to the cache. A branch without a PR makes gh fail, and is cached as none. */
+export function refreshPullRequest({ command, file, repo, branch }) {
+  const [program, ...prefix] = command;
+  return new Promise((resolve) => {
+    execFile(program, [...prefix, 'pr', 'view', branch, '--repo', repo, '--json', GH_FIELDS], {
+      // Never the user's repo: with --repo gh needs no checkout, and a repo's own git config stays out of it.
+      cwd: path.dirname(file), timeout: GH_TIMEOUT_MS, maxBuffer: GH_MAX_OUTPUT_BYTES, encoding: 'utf8', windowsHide: true, shell: false,
+      env: { ...process.env, GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1', NO_COLOR: '1' },
+    }, (error, stdout) => resolve(writePullRequestCache(file, { checkedAt: Date.now(), stdout: error ? null : stdout })));
+  });
+}
+
+/** A worker job as parsed from argv, or null when it isn't one this file would have started. */
+export function parsePullRequestJob(text) {
+  let job;
+  try {
+    job = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  const { command, file, repo, branch } = job ?? {};
+  const [owner, name, ...rest] = typeof repo === 'string' ? repo.split('/') : [];
+  const commandValid = Array.isArray(command) && command.length > 0 && command.every((part) => typeof part === 'string' && part && !part.includes('\0'));
+  const fileValid = typeof file === 'string' && path.isAbsolute(file) && path.extname(file) === '.json';
+  const target = rest.length === 0 ? pullRequestTarget({ host: 'github.com', owner, name }, branch) : null;
+  return commandValid && fileValid && target ? { command, file, ...target } : null;
+}
+
 // ---- jj
 
 // Walks up from cwd for a `.jj` directory, as jj does, without spawning anything. lstat keeps a
@@ -566,7 +659,7 @@ function replaceFile(file, text) {
 // ---- The menu logic picks from
 
 /** Every probe logic may ask for, bound to this render's inputs. Each resolves to plain JSON. */
-export function createProbes({ cwd, argv = process.argv, env = process.env, usage = { read: null, write: null }, early = [] }) {
+export function createProbes({ cwd, argv = process.argv, env = process.env, usage = { read: null, write: null }, early = [], pullRequests = null }) {
   const extraCmd = parseExtraCmdArg(argv, env);
   const extra = extraCmd ? runExtraCmd(extraCmd) : Promise.resolve(null);
   let overrides;
@@ -586,6 +679,13 @@ export function createProbes({ cwd, argv = process.argv, env = process.env, usag
     'git.numstat': () => git(['diff-index', '-M', '--numstat', '-z', '--ignore-submodules=dirty', 'HEAD'], 2000),
     'git.branch': () => git(['rev-parse', '--abbrev-ref', 'HEAD'], 1000, false),
     'git.describe': () => git(['describe', '--tags', '--exact-match', 'HEAD'], 1000, false),
+    // pullRequests: { dir, repo, command? } from hud.mjs; the branch comes from git, the repo from Claude Code.
+    'github.pr': async () => {
+      if (!pullRequests?.dir) return null;
+      const branch = await once('git.branch');
+      const target = pullRequestTarget(pullRequests.repo, branch && 'stdout' in branch ? branch.stdout.trim() : null);
+      return target ? readPullRequest(pullRequests.dir, target, pullRequests.command ? { command: pullRequests.command } : {}) : null;
+    },
     jj: async () => {
       const dir = typeof cwd === 'string' && isJjRepo(cwd) ? realDirectory(cwd) : null;
       const jj = process.platform === 'win32' ? resolveWindowsExecutable('jj') : 'jj';
@@ -626,6 +726,14 @@ export function createProbes({ cwd, argv = process.argv, env = process.env, usag
   // hud.mjs calls this once logic's Node is starting, so `early` (see probesToStart) runs meanwhile.
   ask.start = () => early.forEach(once);
   return ask;
+}
+
+// ---- gh worker: node collector.mjs --gh-worker <job JSON>, started detached by readPullRequest.
+
+if (process.argv[1] && path.resolve(process.argv[1]) === SELF && process.argv[2] === '--gh-worker') {
+  const job = parsePullRequestJob(process.argv[3] ?? '');
+  if (!job) process.exit(2);
+  void refreshPullRequest(job).then((written) => process.exit(written ? 0 : 1));
 }
 
 // ---- Windows git worker: node collector.mjs --git-worker <absolute git path> <cwd> <git args...>

@@ -47,8 +47,9 @@ function render(runtime, args) {
 
 const node = render(process.execPath, []);
 if (supported) {
-  check(`Node ${process.version}: today's launcher renders two HUD lines through dist/index.js`,
-    node.status === 0 && /\[Opus\]/.test(node.stdout) && /45%/.test(node.stdout) && node.stdout.split('\n').length === 3, node);
+  // With no cwd there are no directory or git lines, so the default HUD is one line: the model beside context.
+  check(`Node ${process.version}: today's launcher renders the model and context line through dist/index.js`,
+    node.status === 0 && /\[Opus\].*45%/.test(node.stdout) && node.stdout.split('\n').length === 2, node);
 } else {
   check(`Node ${process.version}: today's launcher prints the upgrade line`,
     node.status === 0 && node.stdout === `claude-hud needs Node 22.18+ (this is ${process.version}). Type /hud to fix it.\n`, node);
