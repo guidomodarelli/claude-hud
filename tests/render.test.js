@@ -21,6 +21,16 @@ const plain = (s) => s.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '').replace(/\x1b\][^
 const ago = (ms) => new Date(NOW - ms);
 const from = (ms) => new Date(NOW + ms);
 
+// These cases index lines and read classic git, so unless they set otherwise they keep the project and `git:(…)` on a
+// first line of its own, apart from context and usage. The default layout (model, context and usage on one line,
+// then the directory and git lines) is pinned by pull-request.test.js and the golden output.
+const INLINE_SEGMENTS = { display: { projectLayout: 'inline', mergeGroups: [['context', 'usage']], durationPlacement: 'firstLine', usageCompact: false, usageCompactBar: false, contextBesideModel: false }, gitStatus: { layout: 'inline', style: 'classic' } };
+const withInlineSegments = (config) => ({
+  ...config,
+  display: { ...INLINE_SEGMENTS.display, ...config.display },
+  gitStatus: { ...INLINE_SEGMENTS.gitStatus, ...config.gitStatus },
+});
+
 function ctx({ config = {}, stdin = {}, transcript = {}, ...rest } = {}) {
   return {
     stdin: {
@@ -41,7 +51,7 @@ function ctx({ config = {}, stdin = {}, transcript = {}, ...rest } = {}) {
     memoryUsage: null,
     extraLabel: null,
     ...rest,
-    config: mergeConfig(config),
+    config: mergeConfig(withInlineSegments(config)),
   };
 }
 

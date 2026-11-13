@@ -13,7 +13,6 @@
   },
   "expect": [
     "exit 0",
-    "contains Context",
     "contains 0%",
     "lacks NaN"
   ]

@@ -13,7 +13,7 @@ folder, the network, a key, posting, merging. Everything else is logic.
 ═══════════╪════════ files only ════ THE LINE ═══════════╪════╪═════ JSON lines on fd 0 and 1 ════════════╪═══
  CAPABILITY│ harness.mjs + relay: holds the token,       │    │ hud.mjs: runCage, terminalFilter           │
  (owner)   │   per-run and daily token caps              │    │ collector.mjs: every path, every program   │
-           │ act.mjs: reply | label | close | propose,   │    │   but Node (git, jj, vm_stat, extra cmd)   │
+           │ act.mjs: reply | label | close | propose,   │    │   but Node (git, jj, gh, vm_stat, extra)   │
            │   and the `gate` check                      │    │ fence.mjs + node --permission: the cage    │
            │                                             │    │ install.mjs: writes the statusLine setting │
            │                                             │    │ launcher + stubs: run the newest install   │
@@ -65,7 +65,7 @@ flowchart TD
   stub["launcher stub: index.ts"]
   entry["entry: main.ts channel.ts commands.ts schema.ts"]
   read["read files: config.ts config-reader.ts transcript.ts auth.ts external-usage.ts daily-cost.ts speed.ts"]
-  parse["parse stdin and probe answers: stdin.ts model-source.ts effort.ts cost.ts usage-pace.ts types.ts git.ts jj.ts memory.ts extra-cmd.ts"]
+  parse["parse stdin and probe answers: stdin.ts model-source.ts effort.ts cost.ts usage-pace.ts types.ts git.ts jj.ts pull-request.ts memory.ts extra-cmd.ts"]
   render["render lines: render/**"]
   shared["shared: utils/** i18n/** debug.ts"]
 

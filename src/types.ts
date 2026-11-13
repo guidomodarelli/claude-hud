@@ -2,6 +2,7 @@ import type { HudConfig } from './config.ts';
 import type { GitRepoIdentity, GitStatus } from './git.ts';
 import type { AuthInfo } from './auth.ts';
 import type { CostTotals } from './daily-cost.ts';
+import type { PullRequest } from './pull-request.ts';
 
 // The statusline payload Claude Code writes to stdin (code.claude.com/docs/en/statusline).
 export interface StdinData {
@@ -196,6 +197,8 @@ export interface RenderContext {
   costTotals: CostTotals | null;
   outputSpeed: number | null;
   gitStatus: GitStatus | null;
+  /** The branch's GitHub PR, when gitStatus.showPullRequest is on and gh knew one. */
+  pullRequest?: PullRequest | null;
   usageData: UsageData | null;
   memoryUsage: MemoryInfo | null;
   config: HudConfig;

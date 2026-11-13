@@ -1,6 +1,6 @@
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { getTerminalWidth } from '../src/utils/terminal.ts';
+import { MIN_TERMINAL_WIDTH, getTerminalWidth } from '../src/utils/terminal.ts';
 
 let saved;
 
@@ -46,4 +46,16 @@ test('getTerminalWidth ignores invalid values and caps hostile widths', () => {
   }
   process.env.COLUMNS = '600000000';
   assert.equal(getTerminalWidth(), 1000);
+});
+
+test('getTerminalWidth treats a width too narrow to fit any element as unknown', () => {
+  setColumns(process.stderr, undefined);
+  // A wrapper without a TTY reads 0 columns and subtracts its padding, leaving 1.
+  process.env.COLUMNS = '1';
+  setColumns(process.stdout, undefined);
+  assert.equal(getTerminalWidth(), null);
+  setColumns(process.stdout, 100);
+  assert.equal(getTerminalWidth(), 100, 'falls through to the next source');
+  process.env.COLUMNS = String(MIN_TERMINAL_WIDTH);
+  assert.equal(getTerminalWidth(), MIN_TERMINAL_WIDTH, 'the narrowest usable width is kept');
 });

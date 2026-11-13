@@ -3,23 +3,16 @@ import { t } from '../i18n/index.ts';
 import type { Frame } from './frame.ts';
 import { activityLine, type ActivityElement } from './activity.ts';
 import { separatorLine, visibleWidth } from './ansi.ts';
-import { contextBarAndValue, tokenBreakdown } from './context.ts';
+import { modelCluster, tokenBreakdown } from './context.ts';
 import { cacheHitRateLine, promptCacheLine, sessionTimeLine } from './lines.ts';
 import { orderParts } from './order.ts';
 import {
   advisorPart, authPart, compactionsPart, configCountParts, costPart, customLinePart, durationPart, extraPart,
-  modelBadge, projectParts, sessionNamePart, sessionTokensSummary, speedPart, versionPart, type Part,
+  projectLines, projectParts, sessionNamePart, sessionTokensSummary, speedPart, versionPart, type Part,
 } from './parts.ts';
-import { usageParts } from './usage.ts';
+import { usageAndSpendParts } from './usage.ts';
 
 const ACTIVITY: ActivityElement[] = ['tools', 'skills', 'mcp', 'agents', 'todos'];
-
-// The context bar rides with the model badge, so the cluster moves as the 'model' segment.
-function modelCluster(f: Frame): string {
-  const display = f.config?.display;
-  const { bar, value } = contextBarAndValue(f);
-  return [display?.showModel !== false ? modelBadge(f) : null, bar, value].filter(Boolean).join(' ');
-}
 
 function sessionLine(f: Frame): string {
   const parts: Part[] = [];
@@ -32,7 +25,7 @@ function sessionLine(f: Frame): string {
   add(sessionNamePart(f), 'sessionName');
   add(versionPart(f), 'version');
   configCountParts(f).forEach((part) => add(part));
-  (usageParts(f, 'compact') ?? []).forEach((part) => add(part));
+  (usageAndSpendParts(f, 'compact') ?? []).forEach((part) => add(part));
   if (f.config?.display?.showSessionTokens) add(sessionTokensSummary(f, `${t('format.tok')}:`));
   add(compactionsPart(f));
   add(advisorPart(f), 'advisor');
@@ -49,7 +42,7 @@ function sessionLine(f: Frame): string {
   return line + tokenBreakdown(f);
 }
 
-/** The compact layout: one session line, then the activity lines. */
+/** The compact layout: one session line, the activity lines, then the project and git lines when set apart. */
 export function compactLines(f: Frame): string[] {
   const header = sessionLine(f);
   const activity = ACTIVITY.map((element) => activityLine(f, element)).filter((line): line is string => !!line);
@@ -58,5 +51,5 @@ export function compactLines(f: Frame): string[] {
     const widest = Math.max(visibleWidth(header), 20);
     lines.push(separatorLine(f.width ? Math.min(widest, f.width) : widest));
   }
-  return [...lines, ...activity];
+  return [...lines, ...activity, ...projectLines(f, 'compact')];
 }

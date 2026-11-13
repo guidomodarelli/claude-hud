@@ -6,6 +6,37 @@ import type { Frame, Layout } from './frame.ts';
 import { critical, formatQuotaPercent, label, quotaBar } from './colors.ts';
 import { barLabel, type LabelAlign } from './labels.ts';
 import { formatResetTime, formatWindowTime, limitTimeFormat, wallClock } from './time.ts';
+import { getSpendLimitFromStdin } from '../stdin.ts';
+
+// A spend cap resets monthly; this sizes its window for the elapsed time formats.
+const SPEND_LIMIT_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+const SPEND_LIMIT_LABEL = 'spend';
+
+const wholeUsd = (amount: number): string => `$${Math.round(amount)}`;
+
+/**
+ * `spend: ██████░░░░ 63% (20d)`: the organization's spend cap from stdin, as a bar like the usage windows.
+ * With display.spendLimitUsd set, the amounts follow the percent: `63% $314/$500`.
+ */
+export function spendLimitPart(f: Frame): string | null {
+  const display = f.config?.display;
+  const spend = display?.showSpendLimit === false ? null : getSpendLimitFromStdin(f.stdin);
+  if (!spend) return null;
+  const colors = f.config?.colors;
+  const timeFormat = display?.timeFormat ?? 'relative';
+  const percent = formatQuotaPercent(spend.percent, colors, display?.usageValue ?? 'percent', null);
+  const cap = display?.spendLimitUsd ?? null;
+  const amounts = cap ? ` ${label(`${wholeUsd((cap * spend.percent) / 100)}/${wholeUsd(cap)}`, colors)}` : '';
+  const reset = formatWindowTime(spend.resetAt, SPEND_LIMIT_WINDOW_MS, timeFormat, wallClock(display), f.now);
+  const bar = quotaBar(spend.percent, f.barWidth, colors, null);
+  return `${label(`${SPEND_LIMIT_LABEL}:`, colors)} ${bar} ${percent}${amounts}${reset ? ` ${label(`(${reset})`, colors)}` : ''}`;
+}
+
+/** The usage windows, then the spend cap, as one list of parts. */
+export function usageAndSpendParts(f: Frame, layout: Layout, align: LabelAlign = {}): string[] | null {
+  const parts = [...(usageParts(f, layout, align) ?? []), spendLimitPart(f)].filter((part): part is string => !!part);
+  return parts.length > 0 ? parts : null;
+}
 
 interface UsageWindow {
   label: string;
@@ -29,9 +60,10 @@ function formatWindow(f: Frame, layout: Layout, w: UsageWindow, align: LabelAlig
   const reset = formatWindowTime(w.resetAt, w.windowMs, timeFormat, wallClock(display), f.now);
 
   if (display?.usageCompact) {
+    const bar = display.usageCompactBar ? `${quotaBar(w.percent ?? 0, f.barWidth, colors, w.pace)} ` : '';
     return reset
-      ? `${label(`${w.label}:`, colors)} ${percent} ${label(`(${reset})`, colors)}`
-      : `${label(`${w.label}:`, colors)} ${percent}`;
+      ? `${label(`${w.label}:`, colors)} ${bar}${percent} ${label(`(${reset})`, colors)}`
+      : `${label(`${w.label}:`, colors)} ${bar}${percent}`;
   }
 
   const elapsedMode = timeFormat === 'elapsed' || timeFormat === 'elapsedAndAbsolute';
